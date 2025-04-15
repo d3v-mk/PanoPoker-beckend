@@ -1,5 +1,3 @@
-# api/mercadopago_ipn.py
-
 import os
 import requests
 from fastapi import APIRouter, Request, Query, Depends, HTTPException

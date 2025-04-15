@@ -9,7 +9,7 @@ router = APIRouter(prefix="/mesas", tags=["Mesas"])
 
 
 # Entrar na mesa
-@router.post("/{mesa_id}/jogadores/{jogador_id}/entrar")
+
 def entrar_na_mesa(mesa_id: int, jogador_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     mesa = db.query(Mesa).filter(Mesa.id == mesa_id).first()
     if not mesa:

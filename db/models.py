@@ -56,10 +56,7 @@ class Mesa(Base):
     big_blind_pos = Column(Integer, nullable=True)
     small_blind = Column(Float, nullable=False)
     big_blind = Column(Float, nullable=False)
-
     side_pots = relationship("SidePot", back_populates="mesa")
-
-
     jogadores = relationship("JogadorNaMesa", back_populates="mesa")
 
 

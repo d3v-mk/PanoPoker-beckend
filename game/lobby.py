@@ -8,7 +8,6 @@ from api.schemas import MesaBase
 router = APIRouter(prefix="/lobby", tags=["Lobby"])
 
 
-# ✅ Nome de função único
 @router.get("/mesas", response_model=List[MesaBase])
 def listar_todas_mesas_lobby(db: Session = Depends(get_db)):
     mesas = db.query(Mesa).all()
@@ -24,6 +23,8 @@ def listar_todas_mesas_lobby(db: Session = Depends(get_db)):
     ]
 
     return mesas_com_jogadores
+
+
 
 @router.get("/disponiveis")
 def listar_mesas_disponiveis_para_entrada(db: Session = Depends(get_db)):

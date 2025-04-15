@@ -2,9 +2,8 @@ from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 from db.database import get_db
 from db.models import Mesa, JogadorNaMesa, SidePot
-from typing import Optional
 
-router = APIRouter(prefix="/mesas", tags=["Ações de Jogo"])  # A tag aqui é suficiente para todas as rotas
+router = APIRouter(prefix="/mesas", tags=["Ações de Jogo"])
 
 def get_jogador(db: Session, mesa_id: int, jogador_id: int) -> JogadorNaMesa:
     jogador = db.query(JogadorNaMesa).filter_by(mesa_id=mesa_id, id=jogador_id).first()

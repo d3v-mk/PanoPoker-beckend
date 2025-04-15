@@ -1,10 +1,9 @@
-import os
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from fastapi.security import OAuth2PasswordBearer
 from db.database import get_db
 from db.models import User, Transaction
-from api.auth import decode_access_token, get_current_user
+from api.auth import get_current_user
 from api.schemas import SaqueInput
 from api.mp import criar_cobranca_pix
 

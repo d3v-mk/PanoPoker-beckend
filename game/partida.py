@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from sqlalchemy.orm import Session
-from db.models import Mesa, JogadorNaMesa, User
+from db.models import Mesa, JogadorNaMesa
 import random
 
 router = APIRouter()
