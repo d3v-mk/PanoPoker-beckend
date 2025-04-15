@@ -1,0 +1,35 @@
+# Ignore Python bytecode
+__pycache__/
+*.pyc
+
+# Ignore ambiente virtual
+venv/
+.venv/
+env/
+.env/
+
+# IDEs
+.idea/
+.vscode/
+*.iml
+
+# Arquivos SSH (não devem ser rastreados)
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+
+# Cache de pacotes
+pip-wheel-metadata/
+
+# Arquivos temporários e do sistema
+.DS_Store
+Thumbs.db
+
+# Arquivos de log
+*.log
+
+# Arquivos de build e distribuição
+dist/
+build/
+*.egg-info/
