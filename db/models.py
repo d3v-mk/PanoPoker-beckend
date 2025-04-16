@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Enum, Boolean
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Enum, Boolean, Text
 from .database import Base
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -76,6 +76,7 @@ class JogadorNaMesa(Base):
     user = relationship("User", back_populates="jogadores_na_mesa")
     foldado = Column(Boolean, default=False)
     side_pots = relationship("SidePot", back_populates="jogador")
+    cartas = Column(Text)
 
 
 

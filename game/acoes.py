@@ -45,6 +45,17 @@ def call(mesa_id: int, jogador_id: int, db: Session = Depends(get_db)):
     return {"msg": f"Call de R${valor_para_pagar:.2f}"}
 
 
+@router.post("/{mesa_id}/jogadores/{jogador_id}/check")
+def check(mesa_id: int, jogador_id: int, db: Session = Depends(get_db)):
+    mesa = get_mesa(db, mesa_id)
+    jogador = get_jogador(db, mesa_id, jogador_id)
+
+    if jogador.aposta_atual != mesa.aposta_atual:
+        raise HTTPException(status_code=400, detail="Você não pode dar check. Há uma aposta maior que a sua.")
+
+    return {"msg": "Check realizado com sucesso!"}
+
+
 @router.post("/{mesa_id}/jogadores/{jogador_id}/raise")
 def raise_aposta(mesa_id: int, jogador_id: int, valor: float, db: Session = Depends(get_db)):
     mesa = get_mesa(db, mesa_id)
