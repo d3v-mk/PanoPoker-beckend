@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Form
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
@@ -17,6 +17,8 @@ from api.mercadopago_ipn import router as mp_router
 from api.historico_transacoes import router as historico_router
 from api.saque import router as saque_router
 from api.depositar import router as depositar_router
+
+import logging
 
 router = APIRouter()
 
@@ -47,37 +49,45 @@ class UserInput(BaseModel):
     email: EmailStr
     password: str
 
+
+class RegisterRequest(BaseModel):
+    username: str
+    email: str
+    password: str
+
+class LoginInput(BaseModel):
+    username: str
+    password: str
+
 @router.post("/register")
-def register_user(user: UserCreate, db: Session = Depends(get_db)):
-    if db.query(User).filter(User.email == user.email).first():
-        raise HTTPException(status_code=400, detail="Este email já está em uso.")
+def register_user(request: RegisterRequest, db: Session = Depends(get_db)):
+    logging.warning(f"📥 Chegou no backend: {request}")
+    existing_user = db.query(User).filter(User.username == request.username).first()
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Usuário já existe")
 
-    hashed_password = hash_password(user.password)
-    new_user = User(
-        username=user.username,
-        email=user.email,
-        password=hashed_password,
-        balance=0.0,
-        is_admin=False
+    user = User(
+        username=request.username,
+        email=request.email,
+        password=hash_password(request.password),
     )
-    db.add(new_user)
+    db.add(user)
     db.commit()
-    db.refresh(new_user)
+    return {"msg": "Usuário registrado com sucesso!"}
 
-    return {"msg": "Usuário criado com sucesso!"}
 
 @router.post("/login")
-def login_user(user: UserInput, db: Session = Depends(get_db)):
-    db_user = db.query(User).filter(User.username == user.username).first()
-    
+def login_user(data: LoginInput, db: Session = Depends(get_db)):
+    db_user = db.query(User).filter(User.username == data.username).first()
+
     if not db_user:
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
-    
-    if not verify_password(user.password, db_user.password):
+
+    if not verify_password(data.password, db_user.password):
         raise HTTPException(status_code=401, detail="Senha inválida")
-    
+
     access_token = create_access_token(user_id=db_user.id)
-    
+
     return {
         "msg": f"Bem-vindo de volta, {db_user.username}!",
         "access_token": access_token,

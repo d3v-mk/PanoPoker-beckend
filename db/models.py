@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Enum, Boolean, Text
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Enum, Boolean, Text, JSON
 from .database import Base
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -58,6 +58,15 @@ class Mesa(Base):
     big_blind = Column(Float, nullable=False)
     side_pots = relationship("SidePot", back_populates="mesa")
     jogadores = relationship("JogadorNaMesa", back_populates="mesa")
+    flop = Column(JSON, nullable=True)
+    turn = Column(String, nullable=True)
+    river = Column(String, nullable=True)
+    estado_da_rodada = Column(String, default="pre-flop")
+    mostrar_turn = Column(Boolean, default=False)
+    mostrar_river = Column(Boolean, default=False)
+    jogador_da_vez_id = Column(Integer, nullable=True)
+
+
 
 
 
@@ -77,6 +86,7 @@ class JogadorNaMesa(Base):
     foldado = Column(Boolean, default=False)
     side_pots = relationship("SidePot", back_populates="jogador")
     cartas = Column(Text)
+    rodada_ja_agiu = Column(Boolean, default=False)
 
 
 

@@ -2,7 +2,7 @@ from itertools import combinations
 from collections import Counter
 
 # Valores em ordem de força (de menor para maior)
-VALORES = "23456789TJQKA"
+VALORES = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']
 NAIPES = "♣♦♥♠"
 
 # Ranking das mãos
@@ -38,7 +38,15 @@ def is_sequencia(valores):
     return False
 
 def avaliar_mao(mao):
-    valores = [VALORES.index(c[0]) for c in mao]
+    print(f"🕵️ Avaliando mão: {mao}")
+    valores = []
+    for c in mao:
+        valor = c[:-1]  # tudo menos o naipe
+        if valor not in VALORES:
+            print(f"❌ Carta com valor inválido: {c} (extraído: {valor})")
+            continue  # ignora carta inválida
+        valores.append(VALORES.index(valor))
+        
     naipes = [c[1] for c in mao]
     valor_count = Counter(valores)
     naipe_count = Counter(naipes)

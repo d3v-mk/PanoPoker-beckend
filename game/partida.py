@@ -7,6 +7,7 @@ from db.models import Mesa, JogadorNaMesa, MesaStatus
 from game.baralho import criar_baralho, embaralhar, distribuir_cartas, distribuir_comunidade
 from game.verificar_vencedor import determinar_vencedores
 from game.distribuir_pote import distribuir_pote
+from datetime import datetime
 
 router = APIRouter(prefix="/mesas", tags=["Mesas"])
 
@@ -19,8 +20,11 @@ def get_mesa(db: Session, mesa_id: int) -> Mesa:
 def get_jogadores_da_mesa(mesa_id: int, db: Session):
     return db.query(JogadorNaMesa).filter(JogadorNaMesa.mesa_id == mesa_id).all()
 
+
+
+
 def definir_blinds(mesa: Mesa, jogadores: list[JogadorNaMesa], db: Session):
-    print(">>> DEFININDO BLINDS")
+    print(">>> DEFININDO BLINDS ROTATIVOS")
 
     if mesa.valor_minimo == 0.30:
         small_blind_valor = 0.01
@@ -29,12 +33,20 @@ def definir_blinds(mesa: Mesa, jogadores: list[JogadorNaMesa], db: Session):
         small_blind_valor = round(mesa.valor_minimo * 0.1, 2)
         big_blind_valor = round(mesa.valor_minimo * 0.2, 2)
 
-    posicoes = list(range(len(jogadores)))
-    small_blind_index = random.choice(posicoes)
-    big_blind_index = (small_blind_index + 1) % len(jogadores)
+    jogadores_ordenados = sorted(jogadores, key=lambda j: j.id)
+    ids = [j.id for j in jogadores_ordenados]
 
-    jogador_small = jogadores[small_blind_index]
-    jogador_big = jogadores[big_blind_index]
+    if mesa.small_blind_pos is None:
+        # Primeira rodada
+        small_index = 0
+        big_index = 1 if len(jogadores) > 1 else 0
+    else:
+        last_sb_index = ids.index(mesa.small_blind_pos)
+        small_index = (last_sb_index + 1) % len(jogadores)
+        big_index = (small_index + 1) % len(jogadores)
+
+    jogador_small = jogadores_ordenados[small_index]
+    jogador_big = jogadores_ordenados[big_index]
 
     if jogador_small.stack < small_blind_valor:
         raise HTTPException(status_code=400, detail="Small blind sem stack suficiente")
@@ -50,8 +62,8 @@ def definir_blinds(mesa: Mesa, jogadores: list[JogadorNaMesa], db: Session):
     db.add(jogador_small)
     db.add(jogador_big)
 
-    mesa.small_blind_pos = small_blind_index
-    mesa.big_blind_pos = big_blind_index
+    mesa.small_blind_pos = jogador_small.id
+    mesa.big_blind_pos = jogador_big.id
     mesa.small_blind = small_blind_valor
     mesa.big_blind = big_blind_valor
     mesa.aposta_atual = big_blind_valor
@@ -60,43 +72,71 @@ def definir_blinds(mesa: Mesa, jogadores: list[JogadorNaMesa], db: Session):
     db.commit()
     db.refresh(mesa)
 
-    print(">>> Blinds definidos com sucesso!")
+    print(f">>> SB: {jogador_small.user_id} | BB: {jogador_big.user_id} | Aposta atual: {mesa.aposta_atual}")
 
-def rotacionar_blinds(mesa: Mesa, jogadores: list[JogadorNaMesa]):
-    jogador_ids = [j.id for j in jogadores]
-    if mesa.big_blind_pos in jogador_ids:
-        big_index = jogador_ids.index(mesa.big_blind_pos)
-        small_index = (big_index + 1) % len(jogadores)
-        big_index = (small_index + 1) % len(jogadores)
-    else:
-        small_index = 0
-        big_index = 1
-    return jogadores[small_index], jogadores[big_index]
+
+
+
+
+def atualizar_vez(mesa: Mesa, jogadores: list[JogadorNaMesa], db: Session):
+    jogadores_ativos = [j for j in jogadores if not j.foldado and j.stack > 0]
+
+    if len(jogadores_ativos) <= 1:
+        mesa.jogador_da_vez_id = None  # Ninguém mais na rodada
+        db.add(mesa)
+        db.commit()
+        return
+
+    jogadores_ordenados = sorted(jogadores, key=lambda j: j.id)
+    atual = next((i for i, j in enumerate(jogadores_ordenados) if j.user_id == mesa.jogador_da_vez_id), -1)
+
+    for offset in range(1, len(jogadores_ordenados)):
+        proximo = (atual + offset) % len(jogadores_ordenados)
+        if not jogadores_ordenados[proximo].foldado and jogadores_ordenados[proximo].stack > 0:
+            mesa.jogador_da_vez_id = jogadores_ordenados[proximo].user_id
+            db.add(mesa)
+            db.commit()
+            print(f"🔁 Próxima vez é do jogador {mesa.jogador_da_vez_id}")
+            return
+
+
+
 
 def iniciar_partida(mesa: Mesa, jogadores_na_mesa: list[JogadorNaMesa], db: Session):
     mesa.status = MesaStatus.em_jogo
+
+    # Agora já define blinds e aplica apostas corretas com rotação
     definir_blinds(mesa, jogadores_na_mesa, db)
 
-    small_blind_valor = mesa.small_blind
-    big_blind_valor = mesa.big_blind
+    mesa.estado_da_rodada = "pre-flop"
 
-    jogador_small, jogador_big = rotacionar_blinds(mesa, jogadores_na_mesa)
-
-    if jogador_small.stack < small_blind_valor or jogador_big.stack < big_blind_valor:
-        raise HTTPException(status_code=400, detail="Um dos jogadores não tem saldo suficiente para pagar o blind.")
-
-    mesa.small_blind_pos = jogador_small.id
-    mesa.big_blind_pos = jogador_big.id
-    mesa.small_blind = small_blind_valor
-    mesa.big_blind = big_blind_valor
-    mesa.aposta_atual = big_blind_valor
-
-    db.commit()
-
+    # Baralho e distribuição
     baralho = embaralhar(criar_baralho())
     jogadores_ids = [j.user_id for j in jogadores_na_mesa]
     mao_jogadores, baralho = distribuir_cartas(jogadores_ids, baralho)
     flop, turn, river, baralho = distribuir_comunidade(baralho)
+
+    mesa.flop = flop
+    mesa.turn = turn
+    mesa.river = river
+
+    # 🔁 Definir o jogador da vez corretamente (após o big blind e ativo)
+    jogadores_ordenados = sorted(jogadores_na_mesa, key=lambda j: j.id)
+    ids_ordenados = [j.id for j in jogadores_ordenados]
+
+    if mesa.big_blind_pos in ids_ordenados:
+        big_index = ids_ordenados.index(mesa.big_blind_pos)
+
+        for offset in range(1, len(jogadores_ordenados)):
+            idx = (big_index + offset) % len(jogadores_ordenados)
+            jogador = jogadores_ordenados[idx]
+            if not jogador.foldado and jogador.stack > 0:
+                mesa.jogador_da_vez_id = jogador.user_id
+                break
+    else:
+        mesa.jogador_da_vez_id = jogadores_ordenados[0].user_id  # fallback
+
+    db.add(mesa)
 
     for jogador in jogadores_na_mesa:
         if jogador.user_id in mao_jogadores:
@@ -107,14 +147,18 @@ def iniciar_partida(mesa: Mesa, jogadores_na_mesa: list[JogadorNaMesa], db: Sess
 
     return {
         "msg": f"Você entrou na mesa {mesa.nome} com sucesso! Partida iniciada com blinds definidos.",
-        "small_blind": jogador_small.user_id,
-        "big_blind": jogador_big.user_id,
+        "small_blind": mesa.small_blind_pos,
+        "big_blind": mesa.big_blind_pos,
+        "jogador_da_vez": mesa.jogador_da_vez_id,
         "aposta_atual_mesa": mesa.aposta_atual,
+        "estado_da_rodada": mesa.estado_da_rodada,
         "maos": [{"user_id": str(user_id), "cartas": cartas} for user_id, cartas in mao_jogadores.items()],
-        "flop": list(flop),
+        "flop": flop,
         "turn": turn,
         "river": river
     }
+
+
 
 class ControladorDePartida:
     def __init__(self, mesa: Mesa, jogadores: list[JogadorNaMesa], db: Session):
@@ -125,6 +169,94 @@ class ControladorDePartida:
         self.community_cards = []
         self.rodada_atual = "pre-flop"
         self.pote = 0
+
+
+
+    def verificar_proxima_etapa(self):
+        from datetime import datetime
+
+        self.jogadores = self.db.query(JogadorNaMesa).filter_by(mesa_id=self.mesa.id).all()
+        jogadores_ativos = [j for j in self.jogadores if not j.foldado and j.stack >= 0]
+
+        if len(jogadores_ativos) <= 1:
+            return
+
+        print("\n🧠 DEBUG ESTADO DOS JOGADORES -", datetime.now())
+        for j in jogadores_ativos:
+            print(f"Jogador {j.user_id} | Foldado: {j.foldado} | Stack: {j.stack} | Aposta Atual: {j.aposta_atual} | Já Agiu: {j.rodada_ja_agiu}")
+        print("--------------------------------------------------")
+
+        def iguais(valores):
+            return all(abs(v - valores[0]) < 0.001 for v in valores)
+
+        apostas = [j.aposta_atual for j in jogadores_ativos]
+        if not iguais(apostas):
+            return
+
+        if not all(j.rodada_ja_agiu for j in jogadores_ativos):
+            return
+
+        if self.mesa.estado_da_rodada == "pre-flop":
+            self.mesa.estado_da_rodada = "flop"
+            print("🌟 Estado da rodada mudou para FLOP")
+        elif self.mesa.estado_da_rodada == "flop":
+            self.mesa.estado_da_rodada = "turn"
+            self.mesa.mostrar_turn = True
+            print("👉 Turn revelado")
+        elif self.mesa.estado_da_rodada == "turn":
+            self.mesa.estado_da_rodada = "river"
+            self.mesa.mostrar_river = True
+            print("👉 River revelado")
+        elif self.mesa.estado_da_rodada == "river":
+            print("✅ Todas as rodadas finalizadas. Showdown em breve.")
+            self.mesa.jogador_da_vez_id = None
+            self.db.add(self.mesa)
+            self.db.commit()
+            self.realizar_showdown()
+            return
+
+        for j in self.jogadores:
+            j.rodada_ja_agiu = False
+            self.db.add(j)
+
+        self.db.add(self.mesa)
+        self.db.commit()
+
+        # Só define nova vez se ainda não for showdown
+        if self.mesa.estado_da_rodada in ["flop", "turn", "river"]:
+            ativos = [j for j in self.jogadores if not j.foldado and j.stack > 0]
+            if ativos:
+                self.mesa.jogador_da_vez_id = ativos[0].user_id
+                self.db.add(self.mesa)
+                self.db.commit()
+                print(f"🎯 Nova rodada: vez do jogador {self.mesa.jogador_da_vez_id}")
+
+
+
+
+
+
+
+    def avancar_vez(self):
+        jogadores_ativos = [j for j in self.jogadores if not j.foldado and j.stack > 0]
+
+        if not jogadores_ativos:
+            self.mesa.jogador_da_vez_id = None
+        else:
+            ids = [j.user_id for j in jogadores_ativos]
+
+            if self.mesa.jogador_da_vez_id not in ids:
+                # Se o jogador atual não estiver mais ativo, começa do primeiro
+                self.mesa.jogador_da_vez_id = ids[0]
+            else:
+                index_atual = ids.index(self.mesa.jogador_da_vez_id)
+                proximo_index = (index_atual + 1) % len(ids)
+                self.mesa.jogador_da_vez_id = ids[proximo_index]
+
+        self.db.add(self.mesa)
+        self.db.commit()
+
+
 
     def jogadores_ativos(self):
         return [j for j in self.jogadores if not j.foldado and j.stack >= 0]
@@ -192,9 +324,11 @@ class ControladorDePartida:
             jogador.aposta_atual = 0
             self.db.add(jogador)
 
+        self.db.add(self.mesa)  # ✅ Garante que o estado da mesa seja salvo
         self.db.commit()
 
         print(f"🏆 Vencedor(es): {vencedores}")
+        print("✅ Fim do showdown. Pote distribuído e nova rodada será iniciada.")
 
         # Inicia nova rodada automaticamente
         self.nova_rodada()
@@ -211,7 +345,9 @@ class ControladorDePartida:
                 } for j in jogadores_info
             ]
         }
+
     
+
     def nova_rodada(self):
         print("🔄 Iniciando nova rodada!")
 
@@ -219,6 +355,7 @@ class ControladorDePartida:
         for jogador in self.jogadores:
             jogador.aposta_atual = 0
             jogador.foldado = False
+            jogador.rodada_ja_agiu = False
             jogador.cartas = json.dumps([])
             self.db.add(jogador)
 
@@ -247,7 +384,13 @@ class ControladorDePartida:
         self.community_cards = list(flop) + [turn, river]
         print("Community cards set:", self.community_cards)
 
+        # ⚠️ ESSENCIAL: Resetar os estados de exibição
+        self.mesa.mostrar_turn = False
+        self.mesa.mostrar_river = False
+        self.db.add(self.mesa)
+
         self.db.commit()
 
         print("🃏 Nova rodada pronta para começar!")
+
 
